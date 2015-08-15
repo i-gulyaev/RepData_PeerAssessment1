@@ -7,19 +7,127 @@ output:
 
 
 ## Loading and preprocessing the data
+It's supposed that Activity monitoring data archive `activity.zip` is in repository.
+To ease further data manipulation load `dplyr` library.
+In order to convert character dates `lubridate` package is used.
 
+```{r loaddata, cache=TRUE}
+library(dplyr)
+library(lubridate)
 
+unzip("activity.zip")
+activity <- tbl_df(read.csv("activity.csv"))
+activity <- mutate(activity, date=ymd(date))
+
+head(activity)
+str(activity)
+```
 
 ## What is mean total number of steps taken per day?
 
+```{r total.number.of.steps.per.day.hist}
+total.steps.per.day <- activity %>%
+    group_by(date) %>%
+    summarize(steps=sum(steps, na.rm=TRUE))
 
+hist(total.steps.per.day$steps,
+    main="Histogram of total number of steps per day",
+    xlab="Total number of steps per day")
+
+mean(total.steps.per.day$steps)
+median(total.steps.per.day$steps)
+```
+
+Mean total number of steps taken per day is **`r round(mean(total.steps.per.day$steps), digits=2)`**.  
+Median total number of steps taken per day is **`r median(total.steps.per.day$steps)`**.
 
 ## What is the average daily activity pattern?
 
+```{r average.daily.activity.pattern}
+avg.activity.pattern <- activity %>% group_by(interval) %>%
+    summarise(avg.steps=mean(steps, na.rm=TRUE))
+plot(avg.activity.pattern, type="l",
+    main="Average daily activity pattern",
+    xlab="5 minutes intervals",
+    ylab="Average number fo steps per interval")
+
+max.point <- avg.activity.pattern %>% filter(avg.steps == max(avg.steps))
+points(max.point, pch=19, col="red")
+text(max.point, labels=paste("max steps", round(max.point$avg.steps, digits=2),
+                             ", interval = ", max.point$interval), pos=4)
+```
+
+The interval **`r max.point$interval`** contains maximum number of steps **`r round(max.point$avg.steps, digits=2)`** across all intervals.
 
 
 ## Imputing missing values
+The original dataset contains missing values.
+```{r}
+total.na <- sum(!complete.cases(activity))
+```
+Total number of missing values in dataset is **`r total.na`**.
 
+All of the missing values in the dataset are replaced with the mean value of steps for particular interval.
+```{r cache=TRUE}
+activity.complete <- activity %>%
+    group_by(interval) %>%
+    mutate(steps = ifelse(is.na(steps), mean(steps, na.rm=TRUE), steps)) %>%
+    group_by(date)
+head(activity.complete)
+sum(!complete.cases(activity.complete))
+```
 
+Histogram of the total number of steps taken per day.
+
+```{r total.number.of.steps.per.day.hist.complete.cases}
+
+total.steps.per.day.complete <- activity.complete %>%
+    group_by(date) %>%
+    summarize(steps=sum(steps, na.rm=TRUE))
+
+hist(total.steps.per.day.complete$steps,
+    main="Histogram of total number of steps per day",
+    xlab="Total number of steps per day")
+
+a <- mean(total.steps.per.day.complete$steps)
+b <- median(total.steps.per.day.complete$steps)
+```
+
+From the above calculation it's easy to see that mean nde median values have changed after imputing missing data.  
+Mean has changed from **`r round(mean(total.steps.per.day$steps), digits=2)`** to **`r round(mean(total.steps.per.day.complete$steps), digits=2)`**.  
+Median has changed from **`r median(total.steps.per.day$steps)`** to **`r round(median(total.steps.per.day.complete$steps), digits=2)`**.
+
+As seen from the histograms imputing missing values normalizes data distribution.
 
 ## Are there differences in activity patterns between weekdays and weekends?
+
+Dataset with imputed values is modified by adding factor column indicating type of the day ("weekday" or "weekend") in order to diffirentiate activity pattern by weekends and weekdays.
+
+```{r}
+
+day.type <- factor(wday(activity.complete$date) %in% c(1,7),
+                   labels=c("weekend", "weekday"))
+activity.day.type <- bind_cols(activity.complete, data.frame(day.type))
+head(activity.day.type)
+```
+
+Vizualization of activity patterns.
+
+Below is a panel plot containing a time series plot of the 5-minute intervals and the average number of steps taken, averaged across all weekday days and weekend days.
+
+```{r weekdays.weekends.activity.pattern}
+avg.activity <- activity.day.type %>%
+    group_by(interval, day.type) %>%
+    summarise(avg.steps=mean(steps))
+    
+library(lattice)
+with(avg.activity,
+     xyplot(avg.steps~interval|day.type, layout=c(1,2),
+            type="l",
+            main="Differences in activity patterns between weekdays and weekends",
+            xlab="5-min interval",
+            ylab="Average number of steps per interval"))
+```
+
+From the plot it clearly seen that activity on weekends is mostly concentrated in first half of the day in contrast to weekdays where it's spread across all the day.
+
